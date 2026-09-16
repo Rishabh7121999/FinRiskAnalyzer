@@ -1,0 +1,11 @@
+langgraph
+langchain
+langchain-community
+langchain[google-genai]
+yfinance
+pandas
+numpy
+fastapi 
+uvicorn
+python-dotenv
+newsapi-python
