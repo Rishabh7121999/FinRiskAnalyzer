@@ -57,6 +57,14 @@ from app.agents.comparison_analysis_agent import (
     comparison_analysis_agent
 )
 
+from app.agents.verification_agent import (
+    verification_agent
+)
+
+from app.agents.governance_agent import (
+    governance_agent
+)
+
 from app.agents.report_generator_agent import (
     report_generator_agent
 )
@@ -146,7 +154,12 @@ def route_after_aggregation(
         return "comparison_analysis"
 
     if intent in ("company_research", "news_analysis"):
-        return "report_generator"
+        # No synthesis agent runs for these intents, but the
+        # report still goes through verification/governance
+        # for consistency - verification degrades gracefully
+        # to a specialist-data-completeness check when no
+        # verdict/risk read exists.
+        return "verification"
 
     # investment_analysis and risk_analysis (and the
     # "unknown" fallback) both want a per-company verdict
@@ -222,6 +235,16 @@ workflow.add_node(
 workflow.add_node(
     "comparison_analysis",
     comparison_analysis_agent
+)
+
+workflow.add_node(
+    "verification",
+    verification_agent
+)
+
+workflow.add_node(
+    "governance",
+    governance_agent
 )
 
 workflow.add_node(
@@ -325,28 +348,47 @@ workflow.add_conditional_edges(
         "comparison_analysis":
             "comparison_analysis",
 
-        "report_generator":
-            "report_generator",
+        "verification":
+            "verification",
     }
 )
 
 
 # ============================================================
-# INVESTMENT / RISK / COMPARISON → REPORT
+# INVESTMENT / RISK / COMPARISON → VERIFICATION
 # ============================================================
+# Every intent funnels through verification -> governance
+# before the report is generated, not just the investment/
+# risk path - comparison and specialist-only reports get the
+# same QA/compliance gate.
 
 workflow.add_edge(
     "investment_analysis",
-    "report_generator"
+    "verification"
 )
 
 workflow.add_edge(
     "risk_analysis",
-    "report_generator"
+    "verification"
 )
 
 workflow.add_edge(
     "comparison_analysis",
+    "verification"
+)
+
+
+# ============================================================
+# VERIFICATION → GOVERNANCE → REPORT
+# ============================================================
+
+workflow.add_edge(
+    "verification",
+    "governance"
+)
+
+workflow.add_edge(
+    "governance",
     "report_generator"
 )
 

@@ -124,6 +124,55 @@ def _format_risk_section(risk):
     return "\n".join(lines)
 
 
+def _format_verification_section(verification):
+
+    flags = (verification or {}).get("flags", [])
+
+    if not flags:
+        return "No verification issues found."
+
+    lines = [
+        f"Status: {verification.get('status')}",
+        f"Flags: {flags}",
+    ]
+
+    for ticker, ticker_flags in verification.get(
+        "per_ticker_flags",
+        {}
+    ).items():
+        lines.append(f"  {ticker}: {ticker_flags}")
+
+    return "\n".join(lines)
+
+
+def _format_governance_section(governance):
+
+    if not governance:
+        return "No governance checks were run for this query."
+
+    lines = [
+        f"Status: {governance.get('status')}",
+    ]
+
+    flags = governance.get("flags", [])
+
+    if flags:
+        lines.append(f"Flags: {flags}")
+
+    for ticker, ticker_flags in governance.get(
+        "per_ticker_flags",
+        {}
+    ).items():
+        lines.append(f"  {ticker}: {ticker_flags}")
+
+    disclosure = governance.get("disclosure")
+
+    if disclosure:
+        lines.append(f"\nDisclosure: {disclosure}")
+
+    return "\n".join(lines)
+
+
 def report_generator_agent(state):
 
     print(
@@ -181,10 +230,30 @@ def report_generator_agent(state):
         {}
     )
 
+    requires_human_review = state.get(
+        "requires_human_review",
+        False
+    )
+
+    review_banner = (
+        "\n*** FLAGGED FOR HUMAN REVIEW - "
+        "see GOVERNANCE section below before acting "
+        "on this report. ***\n"
+        if requires_human_review
+        else ""
+    )
+
+    disclosure = governance.get(
+        "disclosure",
+        ""
+    )
+
     report = f"""
 ========================================
 AI FINANCIAL INTELLIGENCE REPORT
 ========================================
+{review_banner}
+{disclosure}
 
 Companies:
 {companies}
@@ -232,13 +301,13 @@ RISK ASSESSMENT
 VERIFICATION
 ----------------------------------------
 
-{verification}
+{_format_verification_section(verification)}
 
 ----------------------------------------
 GOVERNANCE
 ----------------------------------------
 
-{governance}
+{_format_governance_section(governance)}
 
 ========================================
 """

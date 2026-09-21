@@ -19,3 +19,16 @@ dependencies = [
     "vadersentiment>=3.3.2",
     "requests>=2.34.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integration: hits real Gemini/yfinance/news APIs, requires GOOGLE_API_KEY, network",
+]
+addopts = "-m 'not integration'"
