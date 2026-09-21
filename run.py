@@ -4,7 +4,9 @@ from app.graph.workflow import graph
 initial_state = {
 
     "user_query":
-        "Should I invest in Reliance Industries for the next five years?",
+        "Should I invest in Tata Motors?",
+
+    "query_understanding": None,
 
     "execution_plan": None,
 

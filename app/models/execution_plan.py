@@ -40,3 +40,19 @@ class ExecutionPlan(BaseModel):
     requires_research_analysis: bool = False
 
     requires_human_review: bool = False
+
+    # market_ranking only: routes planner -> market_ranking_agent
+    # instead of -> entity_resolution, since a sector/screening
+    # query has no named companies for entity resolution to work
+    # with - market_ranking_agent produces the company list.
+    requires_market_ranking: bool = False
+
+    sector: str | None = None
+
+    top_n: int | None = None
+
+    ranking_criterion: str | None = None
+
+    horizon: str | None = None
+
+    user_goal: str | None = None

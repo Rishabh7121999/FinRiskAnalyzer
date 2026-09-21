@@ -17,4 +17,5 @@ dependencies = [
     "newsapi-python>=0.2.7",
     "feedparser>=6.0.14",
     "vadersentiment>=3.3.2",
+    "requests>=2.34.2",
 ]

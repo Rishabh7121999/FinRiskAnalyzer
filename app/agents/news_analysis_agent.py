@@ -7,19 +7,15 @@ from app.services.news_service import (
 )
 
 
-def news_agent(state):
+def news_analysis_agent(state):
 
-    analyzer = (
-        SentimentIntensityAnalyzer()
-    )
+    analyzer = SentimentIntensityAnalyzer()
 
     companies = state["companies"]
 
-    results = []
+    results = {}
 
-    print(
-        "\n[News Agent]"
-    )
+    print("\n[News Agent]")
 
     for company in companies:
 
@@ -32,7 +28,6 @@ def news_agent(state):
         )
 
         article_sentiments = []
-
 
         for article in articles:
 
@@ -59,45 +54,32 @@ def news_agent(state):
 
             })
 
-
         average_sentiment = 0
 
         if article_sentiments:
 
             average_sentiment = (
-
                 sum(
                     item["score"]
                     for item in article_sentiments
                 )
-
                 /
-
                 len(article_sentiments)
-
             )
-
 
         if average_sentiment > 0.15:
 
-            overall_sentiment = (
-                "positive"
-            )
+            overall_sentiment = "positive"
 
         elif average_sentiment < -0.15:
 
-            overall_sentiment = (
-                "negative"
-            )
+            overall_sentiment = "negative"
 
         else:
 
-            overall_sentiment = (
-                "neutral"
-            )
+            overall_sentiment = "neutral"
 
-
-        results.append({
+        results[company] = {
 
             "company": company,
 
@@ -113,23 +95,14 @@ def news_agent(state):
             "articles":
                 article_sentiments,
 
-        })
-
+        }
 
     return {
 
-        "agent_results": [
+        "news_analysis": results,
 
-            {
-
-                "task":
-                    "news_analysis",
-
-                "data":
-                    results,
-
-            }
-
-        ]
+        "completed_tasks": [
+            "news_analysis"
+        ],
 
     }

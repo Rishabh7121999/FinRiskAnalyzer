@@ -2,12 +2,12 @@ from typing import TypedDict, Any
 from typing_extensions import Annotated
 
 from app.models.execution_plan import ExecutionPlan
+from app.models.query import QueryUnderstanding
 
 
 # ============================================================
 # REDUCERS
 # ============================================================
-
 def merge_dict(existing: dict, new: dict) -> dict:
     return {
         **existing,
@@ -35,6 +35,8 @@ class AgentState(TypedDict):
     # --------------------------------------------------------
     # PLANNING
     # --------------------------------------------------------
+
+    query_understanding: QueryUnderstanding | None
 
     execution_plan: ExecutionPlan | None
 
@@ -95,6 +97,8 @@ class AgentState(TypedDict):
 
     investment_analysis: dict[str, Any]
 
+    comparison_analysis: dict[str, Any]
+
 
     # --------------------------------------------------------
     # RISK
@@ -141,6 +145,8 @@ class AgentState(TypedDict):
     # AUDIT
     # --------------------------------------------------------
 
-    audit_log: list[dict]
-
+    audit_log: Annotated[
+        list[dict],
+        merge_list
+    ]
     current_agent: str

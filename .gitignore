@@ -32,4 +32,4 @@ build/
 *.egg-info/
 
 # Jupyter
-.ipynb_checkpoints/
+.ipynb_checkpoints

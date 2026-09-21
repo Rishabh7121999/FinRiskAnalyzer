@@ -1,153 +1,202 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-from app.models.execution_plan import ExecutionPlan
-
-from dotenv import load_dotenv
-load_dotenv()
-
-llm = ChatGoogleGenerativeAI(model = "gemini-2.5-flash-lite")
-
-
-planner_llm = llm.with_structured_output(
-    ExecutionPlan
+from app.models.execution_plan import (
+    ExecutionPlan,
+    TaskType,
 )
+
+
+# ============================================================
+# QueryUnderstanding.intent -> ExecutionPlan.intent
+# ============================================================
+# The two models use intentionally different vocabularies:
+# QueryUnderstanding.intent classifies user intent (8 values,
+# includes ones with no task-selection logic yet, e.g.
+# market_ranking). ExecutionPlan.intent is a coarser label
+# that also drives routing after aggregation. This mapping
+# bridges them explicitly instead of merging the two enums.
+#
+# financial_analysis and news_analysis both bucket to
+# "company_research" (not "investment_analysis"): a query
+# asking only for financials or only for news wants that data
+# reported back, not a Buy/Hold/Avoid verdict, so it should
+# route straight to report_generator like company_information.
+#
+# market_ranking buckets to "comparison", not
+# "company_research": once market_ranking_agent has resolved a
+# sector/criterion into a concrete shortlist of companies (see
+# requires_market_ranking below), what the user actually wants
+# is the same ranked-with-narrative treatment comparison_analysis
+# already gives named companies - not a flat data dump.
+
+#### Company Research ####
+#Any query whose ExecutionPlan.intent ends up as "company_research" 
+# skips the verdict-synthesis agent entirely and goes straight 
+# to report_generator, which just renders whatever the specialist agents produced. 
+# It's the bucket for "show me information" queries, 
+# as opposed to "tell me whether to buy" (investment_analysis) or 
+# "rank these against each other" (comparison).
+
+INTENT_MAP: dict[str, str] = {
+    "investment_analysis": "investment_analysis", 
+    "risk_analysis": "risk_analysis",
+    "news_analysis": "company_research",
+    "company_information": "company_research",
+    "comparison": "comparison",
+    "market_ranking": "comparison",
+    "financial_analysis": "company_research",
+    "unknown": "unknown",
+}
+
+
+# ============================================================
+# QueryUnderstanding.intent -> default specialist tasks
+# ============================================================
+# Deterministic: intent is already a closed, LLM-classified
+# enum by the time it reaches the planner, so which of the 3
+# independent specialist tasks to run is a lookup, not
+# something that needs another LLM call.
+#
+# market_ranking runs through market_ranking_agent (not
+# entity_resolution) to turn a sector/criterion into a concrete
+# company shortlist - see requires_market_ranking below - so by
+# the time these tasks run it has the same shape as a
+# comparison query and gets full depth on each shortlisted
+# company.
+
+INTENT_DEFAULT_TASKS: dict[str, list[TaskType]] = {
+    "investment_analysis": [
+        "financial_analysis",
+        "news_analysis",
+        "research_analysis",
+    ],
+    "company_information": [
+        "financial_analysis",
+        "research_analysis",
+    ],
+    "financial_analysis": [
+        "financial_analysis",
+    ],
+    "news_analysis": [
+        "news_analysis",
+    ],
+    "risk_analysis": [
+        "financial_analysis",
+        "news_analysis",
+        "research_analysis",
+    ],
+    "comparison": [
+        "financial_analysis",
+        "news_analysis",
+        "research_analysis",
+    ],
+    "market_ranking": [
+        "financial_analysis",
+        "news_analysis",
+        "research_analysis",
+    ],
+    "unknown": [
+        "financial_analysis",
+        "news_analysis",
+        "research_analysis",
+    ],
+}
+
+
+# ============================================================
+# analysis_scope -> task override
+# ============================================================
+# When the user explicitly names a dimension (e.g. "compare
+# the financials of X and Y"), it overrides the intent's
+# default task set entirely rather than adding to it.
+
+SCOPE_TO_TASK: dict[str, TaskType] = {
+    "financial": "financial_analysis",
+    "news": "news_analysis",
+    "research": "research_analysis",
+}
 
 
 def planner_agent(state):
 
-    state["current_agent"] = "planner_agent"
+    qu = state["query_understanding"]
 
-    query = state["user_query"]
+    if qu.analysis_scope:
 
-    prompt = f"""
-You are the planning agent for an AI financial
-intelligence system.
+        tasks: list[TaskType] = [
+            SCOPE_TO_TASK[scope]
+            for scope in qu.analysis_scope
+        ]
 
-Your responsibility is to understand the user's
-request and create an execution plan.
+    else:
 
-Available tasks:
+        tasks = INTENT_DEFAULT_TASKS.get(
+            qu.intent,
+            [],
+        )
 
-- financial_analysis
-- news_analysis
-- research_analysis
+    plan = ExecutionPlan(
 
-IMPORTANT:
+        intent=INTENT_MAP.get(
+            qu.intent,
+            "unknown",
+        ),
 
-financial_analysis, news_analysis and research_analysis
-are independent tasks.
+        companies=qu.companies,
 
-If more than one of these tasks is required, include
-ALL of them in both:
+        tasks=tasks,
 
-1. tasks
-2. parallel_tasks
+        parallel_tasks=tasks,
 
-They can execute concurrently because they do not
-depend on each other's results.
+        requires_financial_analysis=(
+            "financial_analysis" in tasks
+        ),
 
-Examples:
+        requires_news_analysis=(
+            "news_analysis" in tasks
+        ),
 
-User:
-"Should I invest in Reliance Industries for the next
-five years?"
+        requires_research_analysis=(
+            "research_analysis" in tasks
+        ),
 
-Return:
+        requires_market_ranking=(
+            qu.intent == "market_ranking"
+        ),
 
-intent:
-investment_analysis
+        sector=qu.sector,
 
-companies:
-["Reliance Industries"]
+        top_n=qu.top_n,
 
-tasks:
-[
-    "financial_analysis",
-    "news_analysis",
-    "research_analysis"
-]
+        ranking_criterion=qu.ranking_criterion,
 
-parallel_tasks:
-[
-    "financial_analysis",
-    "news_analysis",
-    "research_analysis"
-]
+        horizon=qu.horizon,
 
+        user_goal=qu.user_goal,
 
-User:
-"What is the latest sentiment around Tata Motors?"
+    )
 
-Return:
+    return {
 
-intent:
-news_analysis
+        "execution_plan":
+            plan,
 
-companies:
-["Tata Motors"]
+        "companies":
+            qu.companies,
 
-tasks:
-[
-    "news_analysis"
-]
+        "current_agent":
+            "planner_agent",
 
-parallel_tasks:
-[
-    "news_analysis"
-]
+        "next_action":
+            "resolve_entities",
 
+        "audit_log": [
+            {
+                "agent": "planner_agent",
+                "action": "execution_plan_created",
+                "intent": plan.intent,
+                "companies": plan.companies,
+                "tasks": plan.tasks,
+                "analysis_scope": qu.analysis_scope,
+            }
+        ],
 
-User:
-"Compare TCS and Infosys."
-
-Return:
-
-intent:
-comparison
-
-companies:
-["TCS", "Infosys"]
-
-tasks:
-[
-    "financial_analysis",
-    "news_analysis",
-    "research_analysis"
-]
-
-parallel_tasks:
-[
-    "financial_analysis",
-    "news_analysis",
-    "research_analysis"
-]
-
-User query:
-
-{query}
-
-Create the execution plan.
-"""
-
-    plan = planner_llm.invoke(prompt)
-
-    # All specialist tasks are independent.
-    # Therefore they can run in parallel.
-
-    plan.parallel_tasks = plan.tasks
-
-    state["execution_plan"] = plan
-
-    state["companies"] = plan.companies
-
-    state["audit_log"].append({
-        "agent": "planner_agent",
-        "action": "execution_plan_created",
-        "intent": plan.intent,
-        "companies": plan.companies,
-        "tasks": plan.tasks,
-    })
-
-    state["next_action"] = "resolve_entities"
-
-    return state
+    }
